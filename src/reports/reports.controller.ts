@@ -1,41 +1,45 @@
-import { Controller, Get, Query, Res } from '@nestjs/common';
+import { Controller, Get, Query, Request, UseGuards } from '@nestjs/common';
 import { ReportsService } from './reports.service';
+import { AuthGuard } from 'src/common/guards/authGuards';
 
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
+  @UseGuards(AuthGuard)
   @Get('monthly')
   StatisticsMonthly(
-  @Query('userId') userId:string,
+  @Request() req :any,
+  @Query('userId') userId: string,
   @Query('year') year:string,
   @Query('month') month:string
   ) {
-  return this.reportsService.findStatisticsMonthly(+userId, +year,+month);  
+  const authUserId = req.user.dataValues.id
+  return this.reportsService.findStatisticsMonthly(+authUserId,+userId, +year,+month);  
   }
 
+  @UseGuards(AuthGuard)
   @Get('yearly')
   StatisticsYearly(
-  @Query('userId') userId:string,
+  @Request() req:any,
+  @Query() userId :string,
   @Query('year') year:string
   ) {
-  return this.reportsService.findStatisticsYearly(+userId, +year);  
+  const authUserId = req.user.dataValues.id
+  return this.reportsService.findStatisticsYearly(+authUserId,+userId, +year);  
   }
 
-  // @Get('yearly/pdf')
-  // async generateYearlyPDF(
-  //   @Query('userId') userId: string,
-  //   @Query('year') year: string,
-  //   @Res() res: Response,
-  // ) {
-  //   const filePath = await this.reportsService.findStatisticsYearly(+userId, +year);
-    
-  //   res.download(filePath, (err) => {
-  //     if (err) {
-  //       res.status(500).send('Error generating PDF');
-  //     }
-  //   });
-  // }
-  
+  @UseGuards(AuthGuard)
+  @Get('daily')
+  StatisticsDaily(
+  @Request() req:any,
+  @Query() userId :string,
+  @Query('year') year:string,
+  @Query('month') month:string,
+  @Query('day') day:string
+  ){
+    const authUserId = req.user.dataValues.id
+    return this.reportsService.findStatisticsDaily(+authUserId,+userId,+year,+month,+day)
+  }  
 
 }

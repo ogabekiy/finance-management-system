@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op } from 'sequelize';
 import { Category } from 'src/categories/category.model';
@@ -6,146 +6,110 @@ import { Transaction } from 'src/transactions/transaction.model';
 import { User } from 'src/users/user.model';
 @Injectable()
 export class ReportsService {
-  constructor(@InjectModel(User) private userModel: typeof User,
-  @InjectModel(Transaction) private transactionModel: typeof Transaction
+  constructor(
+  @InjectModel(Transaction) private transactionModel: typeof Transaction,
+  @InjectModel(User) private userModel: typeof User
   ){}
-  async findStatisticsMonthly(userId: number, year: number, month: number) {
+    async findStatisticsMonthly(authUserId :number,userId: number, year: number, month: number) {
+
+    const authUser = await this.userModel.findOne({where:{id:authUserId}})
+    console.log('u',authUser)
+    if(authUser.id !== userId && authUser.role !== 'admin'){
+        throw new ForbiddenException('yu cant see others statistic')
+    }
+
     console.log('user', userId);
     console.log('year', year);
     console.log('month', month);
-  
+
     const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0); 
-  
+    const endDate = new Date(year, month, 0);
+
     const data = await this.transactionModel.findAll({
-      where: {
-        user_id: userId,
-        transaction_date: {
-          [Op.gte]: startDate,
-          [Op.lte]: endDate,
+        where: {
+            user_id: userId,
+            transaction_date: {
+                [Op.gte]: startDate,
+                [Op.lte]: endDate,
+            },
         },
-      },
-      include: [
-        {
-          model: Category,
-          attributes: ['id', 'title', 'type'],
-        },
-      ],
-      attributes: ['id', 'amount', 'description', 'transaction_date'],
+        include: [
+            {
+                model: Category,
+                attributes: ['id', 'title', 'type'],
+            },
+        ],
+        attributes: ['id', 'amount', 'description', 'transaction_date'],
     });
-  
+
     const jsonData = JSON.stringify(data, null, 2);
-    console.log(jsonData);
-  
+    // console.log(jsonData);
+
     let totalIncome = 0;
     let totalExpense = 0;
-    let incomeCategories = {}; 
-    let expenseCategories = {}; 
-  
+    let incomeCategories = {};
+    let expenseCategories = {};
+    let dailyBreakdown = {};
+
+    for (let day = 1; day <= endDate.getDate(); day++) {
+        dailyBreakdown[day] = { income: 0, expense: 0 };
+    }
+
     data.forEach((transaction: any) => {
-      if (transaction.category.type === 'income') {
-        totalIncome += transaction.amount;
-  
-        const categoryTitle = transaction.category.title;
-        if (!incomeCategories[categoryTitle]) {
-          incomeCategories[categoryTitle] = 0;
+        const transactionDate = new Date(transaction.transaction_date);
+        const day = transactionDate.getDate();
+
+        if (transaction.category.type === 'income') {
+            totalIncome += transaction.amount;
+            dailyBreakdown[day].income += transaction.amount;
+
+            const categoryTitle = transaction.category.title;
+            if (!incomeCategories[categoryTitle]) {
+                incomeCategories[categoryTitle] = 0;
+            }
+            incomeCategories[categoryTitle] += transaction.amount;
+        } else if (transaction.category.type === 'expense') {
+            totalExpense += transaction.amount;
+            dailyBreakdown[day].expense += transaction.amount;
+
+            const categoryTitle = transaction.category.title;
+            if (!expenseCategories[categoryTitle]) {
+                expenseCategories[categoryTitle] = 0;
+            }
+            expenseCategories[categoryTitle] += transaction.amount;
         }
-        incomeCategories[categoryTitle] += transaction.amount;
-      } else if (transaction.category.type === 'expense') {
-        totalExpense += transaction.amount;
-  
-        const categoryTitle = transaction.category.title;
-        if (!expenseCategories[categoryTitle]) {
-          expenseCategories[categoryTitle] = 0;
-        }
-        expenseCategories[categoryTitle] += transaction.amount;
-      }
     });
-  
+
     const maxExpenseCategory = Object.keys(expenseCategories).reduce((a, b) =>
-      expenseCategories[a] > expenseCategories[b] ? a : b
+        expenseCategories[a] > expenseCategories[b] ? a : b
     );
-  
+
     const maxIncomeCategory = Object.keys(incomeCategories).reduce((a, b) =>
-      incomeCategories[a] > incomeCategories[b] ? a : b
+        incomeCategories[a] > incomeCategories[b] ? a : b
     );
-  
-    console.log('Total Income:', totalIncome);
-    console.log('Total Expense:', totalExpense);
-    console.log('Max Expense Category:', maxExpenseCategory);
-    console.log('Max Income Category:', maxIncomeCategory);
-  
+
+    // console.log('Total Income:', totalIncome);
+    // console.log('Total Expense:', totalExpense);
+    // console.log('Max Expense Category:', maxExpenseCategory);
+    // console.log('Max Income Category:', maxIncomeCategory);
+
     return {
-      totalIncome,
-      totalExpense,
-      maxExpenseCategory,
-      maxIncomeCategory,
+        totalIncome,
+        totalExpense,
+        maxExpenseCategory,
+        maxIncomeCategory,
+        dailyBreakdown,
     };
+}
+
+  async findStatisticsYearly(authUserId:number,userId: number, year: number) {
+
+    const authUser = await this.userModel.findOne({where:{id:authUserId}})
+
+    if(authUser.id !== userId && authUser.role !== 'admin'){
+      throw new ForbiddenException('yu cant see others statistic')
   }
 
-  //pdf
-  // async generatePDF(data: any, year: number) {
-  //   const docDefinition = {
-  //     content: [
-  //       { text: `Financial Report for Year ${year}`, style: 'header' },
-  //       {
-  //         text: `Yearly Income: ${data.totalIncome}\nYearly Expense: ${data.totalExpense}`,
-  //         style: 'summary',
-  //       },
-  //       {
-  //         text: `Max Income Category: ${data.maxIncomeCategory}`,
-  //         style: 'summary',
-  //       },
-  //       {
-  //         text: `Max Expense Category: ${data.maxExpenseCategory}`,
-  //         style: 'summary',
-  //       },
-  //       { text: 'Monthly Breakdown:', style: 'subheader' },
-  //       ...data.monthlyStats.map((monthStat: any) => ({
-  //         text: `Month ${monthStat.month}: Income - ${monthStat.totalIncome}, Expense - ${monthStat.totalExpense}, Max Income Category: ${monthStat.maxIncomeCategory}, Max Expense Category: ${monthStat.maxExpenseCategory}`,
-  //         style: 'monthDetail',
-  //       })),
-  //     ],
-  //     styles: {
-  //       header: {
-  //         fontSize: 18,
-  //         bold: true,
-  //         alignment: 'center',
-  //       },
-  //       summary: {
-  //         fontSize: 14,
-  //         margin: [0, 5],
-  //       },
-  //       subheader: {
-  //         fontSize: 16,
-  //         bold: true,
-  //         margin: [0, 10],
-  //       },
-  //       monthDetail: {
-  //         fontSize: 12,
-  //         margin: [0, 5],
-  //       },
-  //     },
-  //   };
-
-  //   // Generate PDF
-  //   const pdfDoc = pdfMake.createPdf(docDefinition);
-  //   const filePath = `reports/financial_report_${year}.pdf`;
-
-  //   return new Promise<string>((resolve, reject) => {
-  //     pdfDoc.getBuffer((buffer) => {
-  //       fs.writeFile(filePath, buffer, (err) => {
-  //         if (err) {
-  //           reject('Error saving PDF file');
-  //         } else {
-  //           resolve(filePath); // Return the file path for download
-  //         }
-  //       });
-  //     });
-  //   });
-  // }
-
-  async findStatisticsYearly(userId: number, year: number) {
     console.log('user', userId);
     console.log('year', year);
 
@@ -240,7 +204,89 @@ export class ReportsService {
     return reportData
   }
 
+  async findStatisticsDaily(authUserId:number,userId: number, year: number, month: number, day: number) {
 
+    const authUser = await this.userModel.findOne({where:{id:authUserId}})
+
+    if(authUser.id !== userId && authUser.role !== 'admin'){
+      throw new ForbiddenException('yu cant see others statistic')
+  }
+
+    console.log('user', userId);
+    console.log('year', year);
+    console.log('month', month);
+    console.log('day', day);
+
+    const startDate = new Date(year, month - 1, day);
+    const endDate = new Date(year, month - 1, day, 23, 59, 59, 999); 
+
+    const data = await this.transactionModel.findAll({
+        where: {
+            user_id: userId,
+            transaction_date: {
+                [Op.between]: [startDate, endDate], 
+            },
+        },
+        include: [
+            {
+                model: Category,
+                attributes: ['id', 'title', 'type'],
+            },
+        ],
+        attributes: ['id', 'amount', 'description', 'transaction_date'],
+    });
+
+    const jsonData = JSON.stringify(data, null, 2);
+    console.log(jsonData);
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    let incomeCategories = {};
+    let expenseCategories = {};
+
+    data.forEach((transaction: any) => {
+        if (transaction.category.type === 'income') {
+            totalIncome += transaction.amount;
+
+            const categoryTitle = transaction.category.title;
+            if (!incomeCategories[categoryTitle]) {
+                incomeCategories[categoryTitle] = 0;
+            }
+            incomeCategories[categoryTitle] += transaction.amount;
+        } else if (transaction.category.type === 'expense') {
+            totalExpense += transaction.amount;
+
+            const categoryTitle = transaction.category.title;
+            if (!expenseCategories[categoryTitle]) {
+                expenseCategories[categoryTitle] = 0;
+            }
+            expenseCategories[categoryTitle] += transaction.amount;
+        }
+    });
+
+    const maxExpenseCategory = Object.keys(expenseCategories).reduce((a, b) =>
+        expenseCategories[a] > expenseCategories[b] ? a : b, null
+    );
+
+    const maxIncomeCategory = Object.keys(incomeCategories).reduce((a, b) =>
+        incomeCategories[a] > incomeCategories[b] ? a : b, null
+    );
+
+    console.log('Total Income:', totalIncome);
+    console.log('Total Expense:', totalExpense);
+    console.log('Max Expense Category:', maxExpenseCategory);
+    console.log('Max Income Category:', maxIncomeCategory);
+
+    return {
+        transactions: data, 
+        totalIncome,
+        totalExpense,
+        maxExpenseCategory,
+        maxIncomeCategory,
+        incomeCategories, 
+        expenseCategories, 
+    };
+}
   
 
 }
