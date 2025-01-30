@@ -22,7 +22,7 @@ export class ReportsController {
   @Get('yearly')
   StatisticsYearly(
   @Request() req:any,
-  @Query() userId :string,
+  @Query('userId') userId :string,
   @Query('year') year:string
   ) {
   const authUserId = req.user.dataValues.id
