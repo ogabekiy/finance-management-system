@@ -33,7 +33,7 @@ export class ReportsController {
   @Get('daily')
   StatisticsDaily(
   @Request() req:any,
-  @Query() userId :string,
+  @Query('userId') userId :string,
   @Query('year') year:string,
   @Query('month') month:string,
   @Query('day') day:string
